@@ -58,3 +58,7 @@ be used to infer the accesses to `array2` if it is not accessible to the attacke
 ## Credits
 SGXSpectre is brought to you by Dan O'Keeffe, Divya Muthukumaran, Pierre-Louis
 Aublin, Florian Kelbert, Christian Priebe, Josh Lind, Huanzhou Zhu and Peter Pietzuch.
+
+## MIC by DKU.Suhho Lee
+We constructed an hypothesis that if we separate CPU Cores and Caches using MIC the attack
+might be mitigated. MIC branch implements this hypothesis.
