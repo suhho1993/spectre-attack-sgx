@@ -20,7 +20,7 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <sys/socket.h>
-#include <sys/inet.h>
+#include <arpa/inet.h>
 
 
 #ifdef _MSC_VER
@@ -34,9 +34,10 @@
 #include "enclave_init.h"
 #include "MIC.h"
 
+
 extern sgx_enclave_id_t global_eid;
 
-int socket_ecall_offset(offset_out* out)
+static int socket_ecall_offset(ecall_val* out)
 {
 	size_t malicious_x;
 	sgx_status_t sgx_ret = SGX_ERROR_UNEXPECTED;
@@ -52,24 +53,25 @@ int socket_ecall_offset(offset_out* out)
 }
 
 
-int socket_ecall_victim_fucntion(victim_in* in)
+static int socket_ecall_victim_function(ecall_val* in)
 {
-	ecall_victim_function(global_eid, in->x, in->array2, in->array1_size);
-	if(ret !=SGX_SUCCESS){
+	sgx_status_t sgx_ret = SGX_ERROR_UNEXPECTED;
+	sgx_ret = ecall_victim_function(global_eid, in->x, in->array2, in->array1_size);
+	if(sgx_ret !=SGX_SUCCESS){
 		abort();
 		return -1;
 	}
 	return 0;
 }
 
-void socket_init( int port_num)
+int socket_init( int port_num)
 {
 	int fd_sock, cli_sock;
 	int ret;
 	struct sockaddr_in addr;
 	ssize_t len;
 	
-	fd_sock = socket(AF_INET, SOCKET_STREAM, 0);
+	fd_sock = socket(AF_INET, SOCK_STREAM, 0);
 
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
@@ -79,7 +81,7 @@ void socket_init( int port_num)
 	if( ret == -1){
 		printf("socket listen error\n");
 		close(fd_sock);
-		return;
+		return -1;
 	}
 	
 	while(1){
@@ -88,21 +90,21 @@ void socket_init( int port_num)
 		if(ret < 0){
 			printf("Listen error\n");
 			close(fd_sock);
-			return;
+			return -1;
 		}
 
 		cli_sock = accept(fd_sock, (struct sockaddr *)NULL, NULL);
 		if(cli_sock == -1){
-			pritnf("socket accept error\n");
+			printf("socket accept error\n");
 			close(fd_sock);
-			return ;
+			return -1;
 		}
 
 		pid_t pid = fork();
 		if(pid == -1){
 			printf("fork fail\n");
 			close(fd_sock);
-			return;
+			return -1;
 		}
 		else if(pid>0){
 			//parent
@@ -110,44 +112,47 @@ void socket_init( int port_num)
 			close(cli_sock);
 		}
 		else if(pid==0){
-			int req =0;
-
 			//child
 			//close parent socket to dedicate to communication
 			close(fd_sock);
 
-			len= read(cli_sock, &req, sizeof(req));
+			struct ecall_val eval;
+			memset(&eval, 0 ,sizeof(eval));
+
+			len= read(cli_sock, &eval, sizeof(eval));
 			if(len <=0){
 				printf("read fail\n");
 				close(cli_sock);
 				exit(1);
 			}
 
-			if(req == 1){
+			if(eval.type == 1){
 				printf("scket_ecall_offset\n");
-				offset_out out;
-				ret=socket_ecall_offset(&out);
-				if(ret<0){
+				len=socket_ecall_offset(&eval);
+				if(len<0){
 					printf("ecall_offset_fail\n");
 					close(cli_sock);
 					exit(1);
-					return;
 				}
-				write(cli_sock, &out, sizeof(out));
-
+				len=write(cli_sock, &eval, sizeof(eval));
+				if(len<0){
+					printf("ecall_offset_fail\n");
+					close(cli_sock);
+					exit(1);
+					return -1;
+				}
 				close(cli_sock);
 				exit(1);
 			}
-			else if(req == 2){
+			else if(eval.type == 2){
 				printf("socket_ecall_victim_fucntion\n");
-				victim_in in;
-				socket_ecall_victim_function(&in);
-				write(cli_sock, &in, sizeof(in));
-				if(ret<0){
+				socket_ecall_victim_function(&eval);
+				len=write(cli_sock, &eval, sizeof(eval));
+				if(len<0){
 					printf("ecall_victim_fail\n");
 					close(cli_sock);
 					exit(1);
-					return;
+					return -1;
 				}
 				close(cli_sock);
 				exit(1);
@@ -155,7 +160,7 @@ void socket_init( int port_num)
 		}
 	}
 	close(fd_sock);
-	return;
+	return 0;
 }
 
 
@@ -176,7 +181,7 @@ int main(int argc, char *argv[])
     initialize_enclave();
  
     /* Call the main attack function*/
-    spectre_main(argc, argv); 
+    socket_init(1732);//TODO 
 
     /* Destroy the enclave */
 	 destroy_enclave();

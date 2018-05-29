@@ -130,6 +130,8 @@ signed_enclave: enclave
 
 sgxspectre: main.o enclave_u.o enclave_init.o 
 	$(CC) $(CFLAGS) -o $@ main/main.o main/enclave_u.o main/enclave_init.o $(App_Link_Flags) -lpthread
+	gcc -o MIC main/MIC.c
+
 
 clean:
 	find . -iname "enclave_u.?" -delete
@@ -139,4 +141,5 @@ clean:
 	find . -iname "*\.o" -delete
 	find . -iname "*\.i" -delete
 	find . -iname "*~" -delete
+	find . -iname "MIC" -delete
 	rm sgxspectre -f
