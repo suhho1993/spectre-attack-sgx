@@ -37,19 +37,25 @@
 
 extern sgx_enclave_id_t global_eid;
 
-static int socket_ecall_offset(ecall_val* out)
+static void print_ecall(ecall_val* eval)
+{
+        printf("THIS IS CURRENT ECALL PACKET:\n type: %d\n x : %d\n array2: %ld\n array1_size: %ld\n malicious_x: %d\n",eval->type, (int)eval->x, (long)eval->array2, (long)eval->array1_size, (int)eval->malicious_x);
+}
+
+
+static size_t socket_ecall_offset()
 {
 	size_t malicious_x;
 	sgx_status_t sgx_ret = SGX_ERROR_UNEXPECTED;
 	
 	sgx_ret = ecall_get_offset(global_eid, &malicious_x);
 	if(sgx_ret != SGX_SUCCESS){
+		printf("SGX ECALL OFFSET FAIL: %0x\n", sgx_ret);
 		abort();
 		return -1;
 	}
-
-	out->malicious_x = malicious_x;
-	return 0;
+	printf("$$$$$$$$$\n%ld\n",malicious_x);
+	return malicious_x;
 }
 
 
@@ -58,6 +64,7 @@ static int socket_ecall_victim_function(ecall_val* in)
 	sgx_status_t sgx_ret = SGX_ERROR_UNEXPECTED;
 	sgx_ret = ecall_victim_function(global_eid, in->x, in->array2, in->array1_size);
 	if(sgx_ret !=SGX_SUCCESS){
+		printf("ECALL_VICTIM FAIL\n")
 		abort();
 		return -1;
 	}
@@ -117,9 +124,12 @@ int socket_init( int port_num)
 			close(fd_sock);
 
 			struct ecall_val eval;
+			size_t temp = 0;
 			memset(&eval, 0 ,sizeof(eval));
 
 			len= read(cli_sock, &eval, sizeof(eval));
+			printf("THIS IS FROM MAIN: \n");
+			print_ecall(&eval);	
 			if(len <=0){
 				printf("read fail\n");
 				close(cli_sock);
@@ -127,13 +137,16 @@ int socket_init( int port_num)
 			}
 
 			if(eval.type == 1){
-				printf("scket_ecall_offset\n");
-				len=socket_ecall_offset(&eval);
+//				printf("scket_ecall_offset\n");
+				temp =socket_ecall_offset();
+				printf("ecall_fin\n");
 				if(len<0){
 					printf("ecall_offset_fail\n");
 					close(cli_sock);
 					exit(1);
 				}
+				eval.malicious_x = temp;
+				print_ecall(&eval);
 				len=write(cli_sock, &eval, sizeof(eval));
 				if(len<0){
 					printf("ecall_offset_fail\n");
@@ -145,8 +158,9 @@ int socket_init( int port_num)
 				exit(1);
 			}
 			else if(eval.type == 2){
-				printf("socket_ecall_victim_fucntion\n");
+//				printf("socket_ecall_victim_fucntion\n");
 				socket_ecall_victim_function(&eval);
+print_ecall(&eval);
 				len=write(cli_sock, &eval, sizeof(eval));
 				if(len<0){
 					printf("ecall_victim_fail\n");
@@ -163,23 +177,12 @@ int socket_init( int port_num)
 	return 0;
 }
 
-
-
-
-
-
-
-
-
-
-
-
 /* Application entry */
 int main(int argc, char *argv[])
 {
     /* Initialize the enclave */
     initialize_enclave();
- 
+   printf("global_eid : %ld\n",global_eid); 
     /* Call the main attack function*/
     socket_init(1732);//TODO 
 

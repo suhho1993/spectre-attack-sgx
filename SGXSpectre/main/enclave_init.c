@@ -235,6 +235,8 @@ void initialize_enclave(void) {
 		printf("Enclave initialization error!\n");
 		exit(-1);
 	}
+	else
+		printf("Enclave init success\n");
 }
 
 void destroy_enclave(void) {
