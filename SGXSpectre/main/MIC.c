@@ -38,6 +38,7 @@ uint8_t array1dupe[160] = { 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16 };
 uint8_t unused2[64];
 uint8_t array2[256 * 512];
 
+static int count=0;
 static void print_ecall(ecall_val* eval)
 {
 	printf("THIS IS CURRENT ECALL PACKET:\n type: %d\n x : %d\n array2: %d\n array1_size: %d\n malicious_x: %d\n",eval->type, eval->x, eval->array2, eval->array1_size, eval->malicious_x);
@@ -70,10 +71,10 @@ int socket_ecall(ecall_val* eval)
 		return -1;
 	}
 
-	print_ecall(eval);
+	//print_ecall(eval);
 	write(client_socket, eval, sizeof(ecall_val));
 	ret=read(client_socket, eval, sizeof(ecall_val));
-	print_ecall(eval);
+	//print_ecall(eval);
 	if(ret==-1){
 		printf("error: read error\n");
 		close(client_socket);
@@ -132,7 +133,8 @@ int socket_ecall(ecall_val* eval)
 			eval.array1_size = &array1_size;
 			eval.malicious_x = NULL;
 			check=socket_ecall(&eval);
-			print_ecall(&eval);
+			count++;
+			//print_ecall(&eval);
 			if(check<0)
 				return;
 		}
@@ -186,10 +188,11 @@ int spectre_main(int argc, char **argv) {
 	eval.malicious_x=NULL;
 
 	ret=socket_ecall(&eval);
+	count++;
 	if(ret<0)
 		return -1;
 
-	print_ecall(&eval);
+	//print_ecall(&eval);
 
 	malicious_x = eval.malicious_x;
 /*	if(!malicious_x){
@@ -235,7 +238,7 @@ int main(int argc, char *argv[])
 	    printf("error close THE END\n");
 	    return -1;
     }
-
+printf("count : %d\n",count);
     return 0;
 }
 

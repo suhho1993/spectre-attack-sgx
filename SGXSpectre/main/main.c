@@ -36,6 +36,7 @@
 
 
 extern sgx_enclave_id_t global_eid;
+static int count = 0; 
 
 static void print_ecall(ecall_val* eval)
 {
@@ -49,6 +50,7 @@ static size_t socket_ecall_offset()
 	sgx_status_t sgx_ret = SGX_ERROR_UNEXPECTED;
 	
 	sgx_ret = ecall_get_offset(global_eid, &malicious_x);
+	count++;
 	if(sgx_ret != SGX_SUCCESS){
 		printf("SGX ECALL OFFSET FAIL: %0x\n", sgx_ret);
 		abort();
@@ -63,8 +65,9 @@ static int socket_ecall_victim_function(ecall_val* in)
 {
 	sgx_status_t sgx_ret = SGX_ERROR_UNEXPECTED;
 	sgx_ret = ecall_victim_function(global_eid, in->x, in->array2, in->array1_size);
+	count++;
 	if(sgx_ret !=SGX_SUCCESS){
-		printf("ECALL_VICTIM FAIL\n")
+		printf("ECALL_VICTIM FAIL\n");
 		abort();
 		return -1;
 	}
@@ -107,26 +110,28 @@ int socket_init( int port_num)
 			return -1;
 		}
 
-		pid_t pid = fork();
+		/*pid_t pid = fork();
 		if(pid == -1){
 			printf("fork fail\n");
 			close(fd_sock);
 			return -1;
 		}
-		else if(pid>0){
+		*/
+		//else if(pid>0){
 			//parent
 			//close client socket for listening 
-			close(cli_sock);
-		}
-		else if(pid==0){
+		//	close(cli_sock);
+		//}
+		//else if(pid==0){
 			//child
 			//close parent socket to dedicate to communication
-			close(fd_sock);
+		//	close(fd_sock);
 
 			struct ecall_val eval;
 			size_t temp = 0;
 			memset(&eval, 0 ,sizeof(eval));
 
+			
 			len= read(cli_sock, &eval, sizeof(eval));
 			printf("THIS IS FROM MAIN: \n");
 			print_ecall(&eval);	
@@ -155,7 +160,6 @@ int socket_init( int port_num)
 					return -1;
 				}
 				close(cli_sock);
-				exit(1);
 			}
 			else if(eval.type == 2){
 //				printf("socket_ecall_victim_fucntion\n");
@@ -169,9 +173,8 @@ print_ecall(&eval);
 					return -1;
 				}
 				close(cli_sock);
-				exit(1);
 			}
-		}
+		//}
 	}
 	close(fd_sock);
 	return 0;
@@ -185,7 +188,7 @@ int main(int argc, char *argv[])
    printf("global_eid : %ld\n",global_eid); 
     /* Call the main attack function*/
     socket_init(1732);//TODO 
-
+printf("COUNT:%d\n",count);
     /* Destroy the enclave */
 	 destroy_enclave();
 
